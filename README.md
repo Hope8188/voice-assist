@@ -95,22 +95,34 @@ npx serve
 
 ### Netlify (Recommended)
 
-Netlify is recommended for this project as it provides built-in serverless functions to hide API keys.
+Netlify is recommended for this project as it provides built-in serverless functions to hide API keys and reliable speech recognition.
 
-**Step 1: Connect repository to Netlify**
+**Step 1: Get API Keys**
+
+**Gemini API Key:**
+1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Create a new API key
+
+**AssemblyAI API Key (for speech recognition):**
+1. Go to [AssemblyAI](https://www.assemblyai.com/app)
+2. Create a free account
+3. Get your API key from the dashboard
+
+**Step 2: Connect repository to Netlify**
 1. Go to [app.netlify.com](https://app.netlify.com)
 2. Click "Add new site" → "Import an existing project"
 3. Connect your GitHub repository: `Hope8188/voice-assist`
 
-**Step 2: Configure environment variables**
+**Step 3: Configure environment variables**
 In Netlify dashboard → Site settings → Environment variables:
 - `GEMINI_API_KEY`: Your Gemini API key
+- `ASSEMBLYAI_API_KEY`: Your AssemblyAI API key (required for speech recognition)
 - `OPENROUTER_API_KEY`: (Optional) Your OpenRouter API key for fallback
 
-**Step 3: Deploy**
-Netlify will automatically deploy. The proxy functions at `/.netlify/functions/gemini` and `/.netlify/functions/openrouter` will hide your API keys.
+**Step 4: Deploy**
+Netlify will automatically deploy. The proxy functions at `/.netlify/functions/gemini`, `/.netlify/functions/openrouter`, and `/.netlify/functions/speech` will hide your API keys.
 
-**Step 4: Test**
+**Step 5: Test**
 Visit your Netlify URL (e.g., `https://your-site.netlify.app`) and test the voice assistant.
 
 ### Local Development (without proxy)
@@ -149,10 +161,11 @@ const USE_PROXY = false;
 
 ## Architecture
 
-- **STT**: `webkitSpeechRecognition` / `SpeechRecognition`
-- **LLM**: Gemini 2.5 Flash → OpenRouter GPT-4o-mini (fallback)
+- **STT**: AssemblyAI API via Netlify function (reliable, no browser limitations)
+- **LLM**: Gemini 2.5 Flash → OpenRouter GPT-4o-mini (fallback) via Netlify functions
 - **TTS**: `window.speechSynthesis`
 - **State Machine**: Idle → Listening → Processing → Speaking
+- **Audio Recording**: MediaRecorder API with base64 encoding
 
 ## Performance Targets
 

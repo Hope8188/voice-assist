@@ -338,14 +338,13 @@
         const GEMINI_API_KEY = window.GEMINI_API_KEY || null;
         const SYSTEM_PROMPT = 'You are a concise conversational assistant. Only respond to the user\'s exact input. Do not invent facts, add unsolicited information, or break character. Keep responses under 3 short sentences. If uncertain, say \'I\'m not sure about that.\' Do not output markdown, lists, or code.';
         
-        let recognition;
+        let mediaRecorder;
+        let audioChunks = [];
         let synthesis = window.speechSynthesis;
-        let isMuted = true;
+        let isRecording = false;
         let isSpeaking = false;
-        let isStartingRecognition = false;
         let selectedVoice = null;
         let currentModelIndex = 0;
-        let networkErrorCount = 0;
 
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
@@ -383,91 +382,65 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
-        function initSpeechRecognition() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            
-            if (!SpeechRecognition) {
-                addMessage('Speech recognition not supported. Please use Chrome or Edge.', false);
-                return false;
-            }
-
+        async function initAudioRecording() {
             try {
-                recognition = new SpeechRecognition();
-                recognition.continuous = false;
-                recognition.interimResults = false;
-                recognition.lang = 'en-US';
-                recognition.maxAlternatives = 1;
-
-                recognition.onstart = () => {
-                    isStartingRecognition = false;
-                    if (!isMuted && !isSpeaking) {
-                        updateStatus('listening');
-                        latencyDisplay.textContent = 'Listening...';
-                    }
-                    console.log('Speech recognition started');
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
                 };
-
-                recognition.onresult = (event) => {
-                    const transcript = event.results[0][0].transcript.trim();
-                    console.log('Speech recognition result:', transcript);
-                    if (transcript) {
-                        runTurn(transcript);
-                    }
-                };
-
-                recognition.onerror = (event) => {
-                    console.error('Speech recognition error:', event.error);
-                    isStartingRecognition = false;
-                    if (event.error === 'not-allowed') {
-                        addMessage('Microphone access denied. Please allow microphone access.', false);
-                        isMuted = true;
-                        updateMuteButton();
-                    } else if (event.error === 'network') {
-                        networkErrorCount++;
-                        if (networkErrorCount < 2) {
-                            addMessage('Network error: Speech recognition requires internet connection to Google servers.', false);
-                            addMessage('This may not work in browser preview. Try in Chrome/Edge directly.', false);
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const audioArrayBuffer = await audioBlob.arrayBuffer();
+                    const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioArrayBuffer)));
+                    audioChunks = [];
+                    
+                    updateStatus('processing');
+                    latencyDisplay.textContent = 'Processing speech...';
+                    
+                    try {
+                        const transcript = await transcribeAudio(audioBase64);
+                        if (transcript) {
+                            runTurn(transcript);
+                        } else {
+                            updateStatus('idle');
+                            latencyDisplay.textContent = 'Tap mic to speak';
                         }
-                        isMuted = true;
-                        updateMuteButton();
-                    } else if (event.error === 'no-speech') {
-                        console.log('No speech detected');
-                        if (!isMuted && !isSpeaking) {
-                            startRecognitionSafe();
-                        }
-                    } else {
-                        addMessage(`Speech error: ${event.error}`, false);
-                        isMuted = true;
-                        updateMuteButton();
+                    } catch (error) {
+                        console.error('Speech transcription error:', error);
+                        addMessage('Speech recognition failed. Please try again.', false);
+                        updateStatus('idle');
+                        latencyDisplay.textContent = 'Tap mic to speak';
                     }
                 };
-
-                recognition.onend = () => {
-                    isStartingRecognition = false;
-                    console.log('Speech recognition ended');
-                    if (!isMuted && !isSpeaking) {
-                        startRecognitionSafe();
-                    }
-                };
-
+                
                 return true;
             } catch (error) {
-                console.error('Failed to initialize speech recognition:', error);
-                addMessage('Failed to initialize speech recognition.', false);
+                console.error('Failed to initialize audio recording:', error);
+                addMessage('Microphone access denied. Please allow microphone access.', false);
                 return false;
             }
         }
-
-        function startRecognitionSafe() {
-            if (recognition && !isStartingRecognition) {
-                isStartingRecognition = true;
-                try {
-                    recognition.start();
-                    console.log('Starting speech recognition');
-                } catch (e) {
-                    isStartingRecognition = false;
-                    console.log('Recognition start prevented:', e.message);
+        
+        async function transcribeAudio(audioData) {
+            if (USE_PROXY) {
+                const response = await fetch(`${PROXY_BASE}/speech`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ audioData })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Speech API error');
                 }
+                
+                const data = await response.json();
+                return data.transcript;
+            } else {
+                throw new Error('Speech recognition requires proxy mode');
             }
         }
 
@@ -726,10 +699,6 @@
 
         async function runTurn(userInput) {
             const turnStart = performance.now();
-            
-            if (recognition) {
-                recognition.stop();
-            }
 
             addMessage(userInput, true);
             updateStatus('processing');
@@ -772,36 +741,40 @@
         }
 
         function updateMuteButton() {
-            if (isMuted) {
-                micBtn.classList.remove('active');
-            } else {
+            if (isRecording) {
                 micBtn.classList.add('active');
+            } else {
+                micBtn.classList.remove('active');
             }
         }
 
-        function toggleMute() {
-            isMuted = !isMuted;
-            networkErrorCount = 0;
-            updateMuteButton();
-            
-            if (isMuted) {
-                if (recognition) {
-                    recognition.stop();
-                }
-                if (synthesis.speaking) {
-                    synthesis.cancel();
-                }
-                isStartingRecognition = false;
-                updateStatus('idle');
-                latencyDisplay.textContent = 'Tap mic to speak';
+        function toggleRecording() {
+            if (isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+                updateMuteButton();
+                updateStatus('processing');
+                latencyDisplay.textContent = 'Processing...';
             } else {
-                startRecognitionSafe();
+                audioChunks = [];
+                mediaRecorder.start();
+                isRecording = true;
+                updateMuteButton();
                 updateStatus('listening');
                 latencyDisplay.textContent = 'Listening...';
+                
+                // Auto-stop after 5 seconds
+                setTimeout(() => {
+                    if (isRecording) {
+                        mediaRecorder.stop();
+                        isRecording = false;
+                        updateMuteButton();
+                    }
+                }, 5000);
             }
         }
 
-        micBtn.addEventListener('click', toggleMute);
+        micBtn.addEventListener('click', toggleRecording);
         
         sendBtn.addEventListener('click', () => {
             const text = textInput.value.trim();
@@ -837,13 +810,13 @@
             updateStatus('idle');
             updateMuteButton();
             
-            if (initSpeechRecognition()) {
+            if (await initAudioRecording()) {
                 initSpeechSynthesis();
                 updateStatus('idle');
                 latencyDisplay.textContent = 'Tap mic to speak';
             } else {
                 updateStatus('idle');
-                latencyDisplay.textContent = 'Browser not supported - use text input';
+                latencyDisplay.textContent = 'Microphone not available - use text input';
             }
         }
 

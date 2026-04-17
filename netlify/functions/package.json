@@ -1,0 +1,8 @@
+{
+  "name": "voice-assist-functions",
+  "version": "1.0.0",
+  "description": "Netlify functions for AI Voice Assistant",
+  "main": "gemini.js",
+  "dependencies": {},
+  "devDependencies": {}
+}

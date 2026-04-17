@@ -586,6 +586,10 @@
             const latency = Math.round(performance.now() - start);
             console.log(`LLM latency (${modelName}):`, latency, 'ms');
             
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
             return { text: data.text || data.candidates[0].content.parts[0].text.trim(), latency, model: data.model || modelName };
         }
 
@@ -633,6 +637,10 @@
             const data = await response.json();
             const latency = Math.round(performance.now() - start);
             console.log('Fallback latency:', latency, 'ms');
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
             
             return { text: data.text || data.choices[0].message.content.trim(), latency, model: data.model || 'openrouter-gpt-4o-mini' };
         }
@@ -819,6 +827,7 @@
             // Check configuration
             if (USE_PROXY) {
                 console.log('Using Netlify proxy for API calls');
+                console.log('Proxy base:', PROXY_BASE);
             } else if (!GEMINI_API_KEY) {
                 addMessage('⚠️ Please configure GEMINI_API_KEY in config.js or set USE_PROXY=true for Netlify deployment.', false);
                 latencyDisplay.textContent = 'API key not configured';

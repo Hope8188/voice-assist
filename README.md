@@ -93,48 +93,59 @@ npx serve
 
 ## Deployment
 
-### Recommended Platforms
+### Netlify (Recommended)
 
-**1. GitHub Pages (Free)**
-- Static hosting
-- Add API keys via environment variables or client-side config
-- Good for demos and testing
+Netlify is recommended for this project as it provides built-in serverless functions to hide API keys.
 
-**2. Vercel (Free tier)**
-- Fast deployment
-- Edge functions for API key protection
-- Automatic HTTPS
+**Step 1: Connect repository to Netlify**
+1. Go to [app.netlify.com](https://app.netlify.com)
+2. Click "Add new site" → "Import an existing project"
+3. Connect your GitHub repository: `Hope8188/voice-assist`
 
-**3. Netlify (Free tier)**
-- Easy deployment
-- Environment variable support
-- CDN acceleration
+**Step 2: Configure environment variables**
+In Netlify dashboard → Site settings → Environment variables:
+- `GEMINI_API_KEY`: Your Gemini API key
+- `OPENROUTER_API_KEY`: (Optional) Your OpenRouter API key for fallback
 
-**4. Cloudflare Pages (Free)**
-- Global CDN
-- Workers for API proxy
-- Fast performance
+**Step 3: Deploy**
+Netlify will automatically deploy. The proxy functions at `/.netlify/functions/gemini` and `/.netlify/functions/openrouter` will hide your API keys.
 
-### Deployment Steps (Vercel Example)
+**Step 4: Test**
+Visit your Netlify URL (e.g., `https://your-site.netlify.app`) and test the voice assistant.
 
+### Local Development (without proxy)
+
+For local development without Netlify functions:
+
+1. Copy `config.example.js` to `config.js`:
 ```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel
+cp config.example.js config.js
 ```
 
-Add environment variables in Vercel dashboard:
-- `GEMINI_API_KEY`: Your Gemini API key
+2. Edit `config.js` and add your API keys:
+```javascript
+window.GEMINI_API_KEY = 'your_gemini_api_key_here';
+window.OPENROUTER_API_KEY = 'your_openrouter_api_key_here';
+```
+
+3. Set `USE_PROXY = false` at the top of `index.html`:
+```javascript
+const USE_PROXY = false;
+```
+
+4. Open `index.html` in Chrome or Edge directly.
 
 ### Security Note
 
-For production, consider:
-- Using a backend proxy to hide API keys
-- Implementing rate limiting
-- Adding authentication
-- Using environment variables instead of client-side config
+**Netlify deployment includes API key protection:**
+- Serverless functions at `/.netlify/functions/gemini` and `/.netlify/functions/openrouter` proxy all API calls
+- API keys are stored in Netlify environment variables (never exposed to client)
+- No API keys are hardcoded in the client-side code
+
+**Additional security recommendations:**
+- Implement rate limiting (can be added to Netlify functions)
+- Add authentication for production use
+- Monitor API usage and costs
 
 ## Architecture
 

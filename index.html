@@ -329,9 +329,13 @@
     <!-- Load config.js for API keys (optional, will use placeholder if not found) -->
     <script src="config.js"></script>
     <script>
-        // API Key - Set GEMINI_API_KEY in environment variable or replace below
-        const GEMINI_API_KEY = window.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY_HERE';
+        // Configuration
+        const USE_PROXY = true; // Set to false for local development with direct API calls
+        const PROXY_BASE = '/.netlify/functions';
         const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro-002'];
+        
+        // For local development without proxy, set GEMINI_API_KEY in config.js
+        const GEMINI_API_KEY = window.GEMINI_API_KEY || null;
         const SYSTEM_PROMPT = 'You are a concise conversational assistant. Only respond to the user\'s exact input. Do not invent facts, add unsolicited information, or break character. Keep responses under 3 short sentences. If uncertain, say \'I\'m not sure about that.\' Do not output markdown, lists, or code.';
         
         let recognition;
@@ -545,19 +549,28 @@
         async function callGeminiAPI(userInput, modelName) {
             const start = performance.now();
             
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+            let url, requestBody;
             
-            const requestBody = {
-                contents: [{
-                    role: "user",
-                    parts: [{ text: SYSTEM_PROMPT + '\n\nUser: ' + userInput }]
-                }],
-                generationConfig: {
-                    temperature: 0.2,
-                    maxOutputTokens: 60,
-                    topP: 0.8
+            if (USE_PROXY) {
+                url = `${PROXY_BASE}/gemini`;
+                requestBody = { userInput, model: modelName };
+            } else {
+                if (!GEMINI_API_KEY) {
+                    throw new Error('GEMINI_API_KEY not configured');
                 }
-            };
+                url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+                requestBody = {
+                    contents: [{
+                        role: "user",
+                        parts: [{ text: SYSTEM_PROMPT + '\n\nUser: ' + userInput }]
+                    }],
+                    generationConfig: {
+                        temperature: 0.2,
+                        maxOutputTokens: 300,
+                        topP: 0.8
+                    }
+                };
+            }
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -573,33 +586,43 @@
             const latency = Math.round(performance.now() - start);
             console.log(`LLM latency (${modelName}):`, latency, 'ms');
             
-            return { text: data.candidates[0].content.parts[0].text.trim(), latency, model: modelName };
+            return { text: data.text || data.candidates[0].content.parts[0].text.trim(), latency, model: data.model || modelName };
         }
 
         async function callOpenRouterFallback(userInput) {
             const start = performance.now();
             
-            const url = 'https://openrouter.ai/api/v1/chat/completions';
+            let url, requestBody, headers;
             
-            const requestBody = {
-                model: 'openai/gpt-4o-mini',
-                messages: [{
-                    role: 'system',
-                    content: SYSTEM_PROMPT
-                }, {
-                    role: 'user',
-                    content: userInput
-                }],
-                max_tokens: 60,
-                temperature: 0.2
-            };
+            if (USE_PROXY) {
+                url = `${PROXY_BASE}/openrouter`;
+                requestBody = { userInput };
+                headers = { 'Content-Type': 'application/json' };
+            } else {
+                url = 'https://openrouter.ai/api/v1/chat/completions';
+                requestBody = {
+                    model: 'openai/gpt-4o-mini',
+                    messages: [{
+                        role: 'system',
+                        content: SYSTEM_PROMPT
+                    }, {
+                        role: 'user',
+                        content: userInput
+                    }],
+                    max_tokens: 150,
+                    temperature: 0.2
+                };
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${window.OPENROUTER_API_KEY || ''}`,
+                    'HTTP-Referer': window.location.href,
+                    'X-Title': 'AI Voice Assistant'
+                };
+            }
 
             const response = await fetch(url, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer YOUR_OPENROUTER_KEY'
-                },
+                headers: headers,
                 body: JSON.stringify(requestBody)
             });
 
@@ -611,62 +634,85 @@
             const latency = Math.round(performance.now() - start);
             console.log('Fallback latency:', latency, 'ms');
             
-            return { text: data.choices[0].message.content.trim(), latency };
+            return { text: data.text || data.choices[0].message.content.trim(), latency, model: data.model || 'openrouter-gpt-4o-mini' };
         }
 
         async function getAIResponse(userInput, retryWithStrictPrompt = false) {
-            let prompt = SYSTEM_PROMPT + '\n\nUser: ' + userInput;
-            if (retryWithStrictPrompt) {
-                prompt = 'Reply in exactly one short sentence. Directly answer the user.\n\nUser: ' + userInput;
-            }
-
-            for (let i = currentModelIndex; i < GEMINI_MODELS.length; i++) {
-                try {
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODELS[i]}:generateContent?key=${GEMINI_API_KEY}`;
-                    
-                    const requestBody = {
-                        contents: [{
-                            role: "user",
-                            parts: [{ text: prompt }]
-                        }],
-                        generationConfig: {
-                            temperature: 0.2,
-                            maxOutputTokens: 300,
-                            topP: 0.8
-                        }
-                    };
-
-                    const start = performance.now();
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestBody)
-                    });
-
-                    if (!response.ok) {
-                        console.log(`Model ${GEMINI_MODELS[i]} failed with status ${response.status}`);
+            if (USE_PROXY) {
+                // When using proxy, call the proxy function directly with retry logic
+                for (let i = currentModelIndex; i < GEMINI_MODELS.length; i++) {
+                    try {
+                        const response = await callGeminiAPI(userInput, GEMINI_MODELS[i]);
+                        currentModelIndex = i;
+                        return response;
+                    } catch (error) {
+                        console.error(`Model ${GEMINI_MODELS[i]} failed:`, error);
                         continue;
                     }
-
-                    const data = await response.json();
-                    const latency = Math.round(performance.now() - start);
-                    console.log(`LLM latency (${GEMINI_MODELS[i]}):`, latency, 'ms');
-                    currentModelIndex = i;
-                    
-                    return { text: data.candidates[0].content.parts[0].text.trim(), latency, model: GEMINI_MODELS[i] };
-
-                } catch (error) {
-                    console.error(`Model ${GEMINI_MODELS[i]} failed:`, error);
-                    continue;
                 }
-            }
+                
+                // Fallback to OpenRouter via proxy
+                try {
+                    return await callOpenRouterFallback(userInput);
+                } catch (fallbackError) {
+                    console.error('Fallback also failed:', fallbackError);
+                    return { text: "I'm having trouble connecting right now. Please try again.", latency: 0, model: 'fallback' };
+                }
+            } else {
+                // Direct API calls (local development)
+                let prompt = SYSTEM_PROMPT + '\n\nUser: ' + userInput;
+                if (retryWithStrictPrompt) {
+                    prompt = 'Reply in exactly one short sentence. Directly answer the user.\n\nUser: ' + userInput;
+                }
 
-            console.error('All Gemini models failed, attempting OpenRouter fallback');
-            try {
-                return await callOpenRouterFallback(userInput);
-            } catch (fallbackError) {
-                console.error('Fallback also failed:', fallbackError);
-                return { text: "I'm having trouble connecting right now. Please try again.", latency: 0, model: 'fallback' };
+                for (let i = currentModelIndex; i < GEMINI_MODELS.length; i++) {
+                    try {
+                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODELS[i]}:generateContent?key=${GEMINI_API_KEY}`;
+                        
+                        const requestBody = {
+                            contents: [{
+                                role: "user",
+                                parts: [{ text: prompt }]
+                            }],
+                            generationConfig: {
+                                temperature: 0.2,
+                                maxOutputTokens: 300,
+                                topP: 0.8
+                            }
+                        };
+
+                        const start = performance.now();
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(requestBody)
+                        });
+
+                        if (!response.ok) {
+                            console.log(`Model ${GEMINI_MODELS[i]} failed with status ${response.status}`);
+                            continue;
+                        }
+
+                        const data = await response.json();
+                        const latency = Math.round(performance.now() - start);
+                        console.log(`LLM latency (${GEMINI_MODELS[i]}):`, latency, 'ms');
+                        currentModelIndex = i;
+                        
+                        return { text: data.candidates[0].content.parts[0].text.trim(), latency, model: GEMINI_MODELS[i] };
+
+                    } catch (error) {
+                        console.error(`Model ${GEMINI_MODELS[i]} failed:`, error);
+                        continue;
+                    }
+                }
+
+                console.error('All Gemini models failed, attempting OpenRouter fallback');
+                try {
+                    return await callOpenRouterFallback(userInput);
+                } catch (fallbackError) {
+                    console.error('Fallback also failed:', fallbackError);
+                    return { text: "I'm having trouble connecting right now. Please try again.", latency: 0, model: 'fallback' };
+                }
             }
         }
 
@@ -770,9 +816,11 @@
         synthesis.onvoiceschanged = initSpeechSynthesis;
 
         async function init() {
-            // Check if API key is configured
-            if (GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY_HERE' || !GEMINI_API_KEY) {
-                addMessage('⚠️ Please configure GEMINI_API_KEY in index.html or set window.GEMINI_API_KEY before loading.', false);
+            // Check configuration
+            if (USE_PROXY) {
+                console.log('Using Netlify proxy for API calls');
+            } else if (!GEMINI_API_KEY) {
+                addMessage('⚠️ Please configure GEMINI_API_KEY in config.js or set USE_PROXY=true for Netlify deployment.', false);
                 latencyDisplay.textContent = 'API key not configured';
                 return;
             }

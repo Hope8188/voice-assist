@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+            color: white;
+        }
+        @media (max-width: 640px) {
+            body {
+                padding: 0;
+                align-items: flex-end;
+            }
+        }
+        .container {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+            width: 100%;
+            max-width: 600px;
+            height: 85vh;
+            max-height: 800px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        @media (max-width: 640px) {
+            .container {
+                height: 100vh;
+                max-height: none;
+                border-radius: 0;
+                border: none;
+            }
+        }
+        .header {
+            padding: 20px 24px 16px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            flex-shrink: 0;
+        }
+        @media (max-width: 640px) {
+            .header {
+                padding: 16px 20px 12px;
+            }
+        }
+        .header h1 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        @media (max-width: 640px) {
+            .header h1 {
+                font-size: 1.2rem;
+            }
+        }
+        .status {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+        .listening { background: #00d4aa; box-shadow: 0 0 12px #00d4aa; }
+        .processing { background: #ffd700; box-shadow: 0 0 12px #ffd700; }
+        .speaking { background: #667eea; box-shadow: 0 0 12px #667eea; }
+        .idle { background: #6c757d; box-shadow: none; }
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: rgba(0,0,0,0.2);
+        }
+        @media (max-width: 640px) {
+            .chat-container {
+                padding: 16px;
+            }
+        }
+        .chat-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .chat-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .chat-container::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+        }
+        .message {
+            margin-bottom: 12px;
+            padding: 12px 16px;
+            border-radius: 18px;
+            max-width: 85%;
+            animation: slideIn 0.3s ease;
+            line-height: 1.4;
+            font-size: 0.95rem;
+        }
+        @media (max-width: 640px) {
+            .message {
+                margin-bottom: 10px;
+                padding: 10px 14px;
+                font-size: 0.9rem;
+                max-width: 90%;
+            }
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .user-message {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        .ai-message {
+            background: rgba(255,255,255,0.08);
+            color: #e0e0e0;
+            border-bottom-left-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .latency-info {
+            font-size: 0.7rem;
+            opacity: 0.5;
+            margin-top: 6px;
+        }
+        .controls {
+            padding: 16px 20px 20px;
+            background: rgba(0,0,0,0.3);
+            border-top: 1px solid rgba(255,255,255,0.1);
+            flex-shrink: 0;
+        }
+        @media (max-width: 640px) {
+            .controls {
+                padding: 12px 16px 16px;
+            }
+        }
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            width: 100%;
+            max-width: 100%;
+        }
+        input {
+            flex: 1;
+            padding: 14px 18px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 24px;
+            background: rgba(255,255,255,0.08);
+            color: white;
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+        @media (max-width: 640px) {
+            input {
+                padding: 12px 16px;
+                font-size: 0.9rem;
+            }
+        }
+        input::placeholder {
+            color: rgba(255,255,255,0.4);
+        }
+        input:focus {
+            border-color: #667eea;
+            background: rgba(255,255,255,0.12);
+        }
+        .icon-btn {
+            width: 50px;
+            height: 50px;
+            border: none;
+            border-radius: 50%;
+            font-size: 1.3rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        @media (max-width: 640px) {
+            .icon-btn {
+                width: 44px;
+                height: 44px;
+                font-size: 1.2rem;
+            }
+        }
+        .mic-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102,126,234,0.3);
+        }
+        .mic-btn.active {
+            background: linear-gradient(135deg, #ff4757 0%, #ff6b81 100%);
+            box-shadow: 0 4px 15px rgba(255,71,87,0.3);
+            animation: pulse 2s infinite;
+        }
+        .mic-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(102,126,234,0.4);
+        }
+        .mic-btn.active:hover {
+            box-shadow: 0 6px 20px rgba(255,71,87,0.4);
+        }
+        .send-btn {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.2);
+            width: 50px;
+            height: 50px;
+        }
+        @media (max-width: 640px) {
+            .send-btn {
+                width: 44px;
+                height: 44px;
+            }
+        }
+        .send-btn:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,255,255,0.3);
+        }
+        .send-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .latency-display {
+            font-size: 0.7rem;
+            opacity: 0.5;
+            text-align: center;
+            padding: 4px 0 8px;
+            flex-shrink: 0;
+        }
+        .waveform {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 3px;
+            height: 24px;
+            margin-bottom: 12px;
+        }
+        .waveform-bar {
+            width: 3px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 2px;
+            animation: wave 1s ease-in-out infinite;
+        }
+        @keyframes wave {
+            0%, 100% { height: 6px; }
+            50% { height: 20px; }
+        }
+        .waveform-bar:nth-child(1) { animation-delay: 0s; }
+        .waveform-bar:nth-child(2) { animation-delay: 0.1s; }
+        .waveform-bar:nth-child(3) { animation-delay: 0.2s; }
+        .waveform-bar:nth-child(4) { animation-delay: 0.3s; }
+        .waveform-bar:nth-child(5) { animation-delay: 0.4s; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎤 AI Voice Assistant</h1>
+            <div class="status">
+                <span class="status-indicator idle" id="statusDot"></span>
+                <span id="statusText">Initializing...</span>
+            </div>
+        </div>
+        <div class="waveform hidden" id="waveform">
+            <div class="waveform-bar"></div>
+            <div class="waveform-bar"></div>
+            <div class="waveform-bar"></div>
+            <div class="waveform-bar"></div>
+            <div class="waveform-bar"></div>
+        </div>
+        <div class="chat-container" id="chatContainer"></div>
+        <div class="latency-display" id="latencyDisplay">Ready to listen</div>
+        <div class="controls">
+            <div class="input-row">
+                <input type="text" id="textInput" placeholder="Type a message..." />
+                <button class="icon-btn mic-btn" id="micBtn" title="Toggle microphone">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                </button>
+                <button class="icon-btn send-btn" id="sendBtn" title="Send message">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load config.js for API keys (optional, will use placeholder if not found) -->
+    <script src="config.js"></script>
+    <script>
+        // API Key - Set GEMINI_API_KEY in environment variable or replace below
+        const GEMINI_API_KEY = window.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY_HERE';
+        const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro-002'];
+        const SYSTEM_PROMPT = 'You are a concise conversational assistant. Only respond to the user\'s exact input. Do not invent facts, add unsolicited information, or break character. Keep responses under 3 short sentences. If uncertain, say \'I\'m not sure about that.\' Do not output markdown, lists, or code.';
+        
+        let recognition;
+        let synthesis = window.speechSynthesis;
+        let isMuted = true;
+        let isSpeaking = false;
+        let isStartingRecognition = false;
+        let selectedVoice = null;
+        let currentModelIndex = 0;
+        let networkErrorCount = 0;
+
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const chatContainer = document.getElementById('chatContainer');
+        const micBtn = document.getElementById('micBtn');
+        const latencyDisplay = document.getElementById('latencyDisplay');
+        const waveform = document.getElementById('waveform');
+        const textInput = document.getElementById('textInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        function updateStatus(status) {
+            statusDot.className = 'status-indicator ' + status;
+            statusText.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            
+            if (status === 'listening' || status === 'speaking') {
+                waveform.classList.remove('hidden');
+            } else {
+                waveform.classList.add('hidden');
+            }
+        }
+
+        function addMessage(text, isUser, latency = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + (isUser ? 'user-message' : 'ai-message');
+            messageDiv.textContent = text;
+            
+            if (latency !== null && !isUser) {
+                const latencyDiv = document.createElement('div');
+                latencyDiv.className = 'latency-info';
+                latencyDiv.textContent = `⚡ ${latency}ms`;
+                messageDiv.appendChild(latencyDiv);
+            }
+            
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            if (!SpeechRecognition) {
+                addMessage('Speech recognition not supported. Please use Chrome or Edge.', false);
+                return false;
+            }
+
+            try {
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+                recognition.maxAlternatives = 1;
+
+                recognition.onstart = () => {
+                    isStartingRecognition = false;
+                    if (!isMuted && !isSpeaking) {
+                        updateStatus('listening');
+                        latencyDisplay.textContent = 'Listening...';
+                    }
+                    console.log('Speech recognition started');
+                };
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript.trim();
+                    console.log('Speech recognition result:', transcript);
+                    if (transcript) {
+                        runTurn(transcript);
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    isStartingRecognition = false;
+                    if (event.error === 'not-allowed') {
+                        addMessage('Microphone access denied. Please allow microphone access.', false);
+                        isMuted = true;
+                        updateMuteButton();
+                    } else if (event.error === 'network') {
+                        networkErrorCount++;
+                        if (networkErrorCount < 2) {
+                            addMessage('Network error: Speech recognition requires internet connection to Google servers.', false);
+                            addMessage('This may not work in browser preview. Try in Chrome/Edge directly.', false);
+                        }
+                        isMuted = true;
+                        updateMuteButton();
+                    } else if (event.error === 'no-speech') {
+                        console.log('No speech detected');
+                        if (!isMuted && !isSpeaking) {
+                            startRecognitionSafe();
+                        }
+                    } else {
+                        addMessage(`Speech error: ${event.error}`, false);
+                        isMuted = true;
+                        updateMuteButton();
+                    }
+                };
+
+                recognition.onend = () => {
+                    isStartingRecognition = false;
+                    console.log('Speech recognition ended');
+                    if (!isMuted && !isSpeaking) {
+                        startRecognitionSafe();
+                    }
+                };
+
+                return true;
+            } catch (error) {
+                console.error('Failed to initialize speech recognition:', error);
+                addMessage('Failed to initialize speech recognition.', false);
+                return false;
+            }
+        }
+
+        function startRecognitionSafe() {
+            if (recognition && !isStartingRecognition) {
+                isStartingRecognition = true;
+                try {
+                    recognition.start();
+                    console.log('Starting speech recognition');
+                } catch (e) {
+                    isStartingRecognition = false;
+                    console.log('Recognition start prevented:', e.message);
+                }
+            }
+        }
+
+        function initSpeechSynthesis() {
+            const voices = synthesis.getVoices();
+            console.log('Available voices:', voices.length);
+            if (voices.length === 0) {
+                console.warn('No voices available for TTS');
+            }
+            selectedVoice = voices.find(voice => 
+                voice.lang.includes('en-US') && voice.name.includes('Google')
+            ) || voices.find(voice => voice.lang.includes('en-US')) || voices[0];
+            if (selectedVoice) {
+                console.log('Selected voice:', selectedVoice.name, selectedVoice.lang);
+            } else {
+                console.warn('No suitable voice found');
+            }
+        }
+
+        function speak(text) {
+            return new Promise((resolve) => {
+                if (!window.speechSynthesis) {
+                    console.error('Speech synthesis not supported');
+                    addMessage('Text-to-speech not supported in this browser.', false);
+                    resolve();
+                    return;
+                }
+
+                if (synthesis.speaking) {
+                    synthesis.cancel();
+                }
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                if (selectedVoice) {
+                    utterance.voice = selectedVoice;
+                }
+                utterance.rate = 1;
+                utterance.pitch = 1;
+                utterance.volume = 1;
+
+                utterance.onstart = () => {
+                    isSpeaking = true;
+                    updateStatus('speaking');
+                    latencyDisplay.textContent = 'Speaking...';
+                    console.log('TTS started');
+                };
+
+                utterance.onend = () => {
+                    isSpeaking = false;
+                    updateStatus('idle');
+                    latencyDisplay.textContent = 'Tap mic to speak';
+                    console.log('TTS ended');
+                    resolve();
+                };
+
+                utterance.onerror = (event) => {
+                    console.error('Speech synthesis error:', event.error, event);
+                    addMessage(`Voice error: ${event.error}`, false);
+                    isSpeaking = false;
+                    updateStatus('idle');
+                    latencyDisplay.textContent = 'Tap mic to speak';
+                    resolve();
+                };
+
+                synthesis.speak(utterance);
+            });
+        }
+
+        function validateResponse(response) {
+            const forbiddenPhrases = ["I can't help with that", "as an AI", "As an AI language model"];
+            const hasForbiddenPhrase = forbiddenPhrases.some(phrase => 
+                response.toLowerCase().includes(phrase.toLowerCase())
+            );
+            const sentenceCount = response.split(/[.!?]+/).filter(s => s.trim()).length;
+            
+            return !hasForbiddenPhrase && sentenceCount <= 3;
+        }
+
+        async function callGeminiAPI(userInput, modelName) {
+            const start = performance.now();
+            
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+            
+            const requestBody = {
+                contents: [{
+                    role: "user",
+                    parts: [{ text: SYSTEM_PROMPT + '\n\nUser: ' + userInput }]
+                }],
+                generationConfig: {
+                    temperature: 0.2,
+                    maxOutputTokens: 60,
+                    topP: 0.8
+                }
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Gemini API error: ${response.status} for model ${modelName}`);
+            }
+
+            const data = await response.json();
+            const latency = Math.round(performance.now() - start);
+            console.log(`LLM latency (${modelName}):`, latency, 'ms');
+            
+            return { text: data.candidates[0].content.parts[0].text.trim(), latency, model: modelName };
+        }
+
+        async function callOpenRouterFallback(userInput) {
+            const start = performance.now();
+            
+            const url = 'https://openrouter.ai/api/v1/chat/completions';
+            
+            const requestBody = {
+                model: 'openai/gpt-4o-mini',
+                messages: [{
+                    role: 'system',
+                    content: SYSTEM_PROMPT
+                }, {
+                    role: 'user',
+                    content: userInput
+                }],
+                max_tokens: 60,
+                temperature: 0.2
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer YOUR_OPENROUTER_KEY'
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                throw new Error(`OpenRouter error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const latency = Math.round(performance.now() - start);
+            console.log('Fallback latency:', latency, 'ms');
+            
+            return { text: data.choices[0].message.content.trim(), latency };
+        }
+
+        async function getAIResponse(userInput, retryWithStrictPrompt = false) {
+            let prompt = SYSTEM_PROMPT + '\n\nUser: ' + userInput;
+            if (retryWithStrictPrompt) {
+                prompt = 'Reply in exactly one short sentence. Directly answer the user.\n\nUser: ' + userInput;
+            }
+
+            for (let i = currentModelIndex; i < GEMINI_MODELS.length; i++) {
+                try {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODELS[i]}:generateContent?key=${GEMINI_API_KEY}`;
+                    
+                    const requestBody = {
+                        contents: [{
+                            role: "user",
+                            parts: [{ text: prompt }]
+                        }],
+                        generationConfig: {
+                            temperature: 0.2,
+                            maxOutputTokens: 300,
+                            topP: 0.8
+                        }
+                    };
+
+                    const start = performance.now();
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+
+                    if (!response.ok) {
+                        console.log(`Model ${GEMINI_MODELS[i]} failed with status ${response.status}`);
+                        continue;
+                    }
+
+                    const data = await response.json();
+                    const latency = Math.round(performance.now() - start);
+                    console.log(`LLM latency (${GEMINI_MODELS[i]}):`, latency, 'ms');
+                    currentModelIndex = i;
+                    
+                    return { text: data.candidates[0].content.parts[0].text.trim(), latency, model: GEMINI_MODELS[i] };
+
+                } catch (error) {
+                    console.error(`Model ${GEMINI_MODELS[i]} failed:`, error);
+                    continue;
+                }
+            }
+
+            console.error('All Gemini models failed, attempting OpenRouter fallback');
+            try {
+                return await callOpenRouterFallback(userInput);
+            } catch (fallbackError) {
+                console.error('Fallback also failed:', fallbackError);
+                return { text: "I'm having trouble connecting right now. Please try again.", latency: 0, model: 'fallback' };
+            }
+        }
+
+        async function runTurn(userInput) {
+            const turnStart = performance.now();
+            
+            if (recognition) {
+                recognition.stop();
+            }
+
+            addMessage(userInput, true);
+            updateStatus('processing');
+            latencyDisplay.textContent = 'Processing...';
+
+            console.log('Getting AI response for:', userInput);
+            const response = await getAIResponse(userInput);
+            console.log('AI response:', response.text);
+            
+            if (!validateResponse(response.text)) {
+                console.log('Response validation failed, retrying with strict prompt');
+                const retryResponse = await getAIResponse(userInput, true);
+                addMessage(retryResponse.text, false, retryResponse.latency);
+                console.log('Speaking retry response');
+                try {
+                    await speak(retryResponse.text);
+                } catch (error) {
+                    console.error('TTS error:', error);
+                    addMessage('Error speaking response', false);
+                }
+
+                const totalLatency = Math.round(performance.now() - turnStart);
+                console.log('Total turn latency:', totalLatency, 'ms');
+                latencyDisplay.textContent = `Last turn: ${totalLatency}ms | LLM: ${retryResponse.latency}ms`;
+                return;
+            }
+
+            addMessage(response.text, false, response.latency);
+            console.log('Speaking response');
+            try {
+                await speak(response.text);
+            } catch (error) {
+                console.error('TTS error:', error);
+                addMessage('Error speaking response', false);
+            }
+
+            const totalLatency = Math.round(performance.now() - turnStart);
+            console.log('Total turn latency:', totalLatency, 'ms');
+            latencyDisplay.textContent = `Last turn: ${totalLatency}ms | LLM: ${response.latency}ms`;
+        }
+
+        function updateMuteButton() {
+            if (isMuted) {
+                micBtn.classList.remove('active');
+            } else {
+                micBtn.classList.add('active');
+            }
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            networkErrorCount = 0;
+            updateMuteButton();
+            
+            if (isMuted) {
+                if (recognition) {
+                    recognition.stop();
+                }
+                if (synthesis.speaking) {
+                    synthesis.cancel();
+                }
+                isStartingRecognition = false;
+                updateStatus('idle');
+                latencyDisplay.textContent = 'Tap mic to speak';
+            } else {
+                startRecognitionSafe();
+                updateStatus('listening');
+                latencyDisplay.textContent = 'Listening...';
+            }
+        }
+
+        micBtn.addEventListener('click', toggleMute);
+        
+        sendBtn.addEventListener('click', () => {
+            const text = textInput.value.trim();
+            if (text) {
+                textInput.value = '';
+                runTurn(text);
+            }
+        });
+        
+        textInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const text = textInput.value.trim();
+                if (text) {
+                    textInput.value = '';
+                    runTurn(text);
+                }
+            }
+        });
+
+        synthesis.onvoiceschanged = initSpeechSynthesis;
+
+        async function init() {
+            // Check if API key is configured
+            if (GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY_HERE' || !GEMINI_API_KEY) {
+                addMessage('⚠️ Please configure GEMINI_API_KEY in index.html or set window.GEMINI_API_KEY before loading.', false);
+                latencyDisplay.textContent = 'API key not configured';
+                return;
+            }
+
+            updateStatus('idle');
+            updateMuteButton();
+            
+            if (initSpeechRecognition()) {
+                initSpeechSynthesis();
+                updateStatus('idle');
+                latencyDisplay.textContent = 'Tap mic to speak';
+            } else {
+                updateStatus('idle');
+                latencyDisplay.textContent = 'Browser not supported - use text input';
+            }
+        }
+
+        // ... (rest of the code remains the same)
+        init();
+    </script>
+</body>
+</html>
